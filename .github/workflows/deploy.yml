@@ -1,0 +1,51 @@
+name: Deploy Flask via Ansible
+
+on:
+  push:
+    branches: [ main ]
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install Ansible and dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y python3-pip sshpass
+          pip3 install ansible boto3 botocore
+          ansible-galaxy collection install amazon.aws
+
+      # Write SSH key used to connect to Amazon Linux EC2
+      - name: Write EC2 SSH private key
+        run: |
+          mkdir -p ~/.ssh
+          echo "${{ secrets.EC2_SSH_KEY }}" > ~/.ssh/ec2-key.pem
+          chmod 600 ~/.ssh/ec2-key.pem
+
+      # Write vault password (no --ask-vault-pass in CI)
+      - name: Write Ansible vault password file
+        run: |
+          echo "${{ secrets.ANSIBLE_VAULT_PASSWORD }}" > .vault_pass
+          chmod 600 .vault_pass
+
+      # Create a simple inventory on the fly pointing to your EC2 instance
+      - name: Write Ansible inventory for Amazon Linux EC2
+        run: |
+          cat > inventory.ini <<EOF
+          [flaskservers]
+          ${EC2_PUBLIC_DNS} ansible_user=ec2-user ansible_ssh_private_key_file=~/.ssh/ec2-key.pem
+          EOF
+        env:
+          EC2_PUBLIC_DNS: ${{ secrets.EC2_PUBLIC_DNS }}
+
+      # Deploy Flask using your existing playbook
+      - name: Deploy Flask app via Ansible
+        env:
+          ANSIBLE_HOST_KEY_CHECKING: "False"
+        run: |
+          ansible-playbook -i inventory.ini playbooks/deploy_flask.yml \
+            --vault-password-file .vault_pass

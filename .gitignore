@@ -1,6 +1,6 @@
 # SSH keys and secrets
-*.pem
-.vault_pass
+./*.pem
+./.vault_pass
 
 # Ansible artifacts
 *.retry

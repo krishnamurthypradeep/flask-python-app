@@ -1,0 +1,16 @@
+[Unit]
+Description=Gunicorn Flask App
+After=network.target
+
+[Service]
+User=ec2-user
+Group=ec2-user
+WorkingDirectory=/opt/flaskapp
+
+ExecStart=/usr/bin/env bash /usr/local/bin/start_gunicorn.sh
+Environment="PATH=/opt/flaskapp/venv/bin"
+
+Restart=always
+
+[Install]
+WantedBy=multi-user.target

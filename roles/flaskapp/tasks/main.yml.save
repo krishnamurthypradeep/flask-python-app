@@ -1,0 +1,93 @@
+---
+- name: Update apt cache
+  apt:
+    update_cache: yes
+  become: yes
+
+- name: Install system packages
+  apt:
+    name:
+      - python3
+      - python3-venv
+      - python3-pip
+      - git
+      - nginx
+    state: present
+  become: yes
+
+- name: Ensure app dir
+  file:
+    path: /opt/flaskapp
+    state: directory
+    owner: www-data
+    group: www-data
+    mode: '0755'
+  become: yes
+
+- name: Clone application repository
+  git:
+    repo: "{{ GIT_REPO | default(lookup('vars', 'GIT_REPO', True)) }}"
+    dest: /opt/flaskapp
+    version: main
+    force: yes
+  become: yes
+
+- name: Create virtualenv
+  command: python3 -m venv /opt/flaskapp/venv
+  args:
+    creates: /opt/flaskapp/venv
+  become: yes
+
+- name: Install Python requirements
+  pip:
+    requirements: /opt/flaskapp/requirements.txt
+    virtualenv: /opt/flaskapp/venv
+  become: yes
+
+- name: Copy gunicorn systemd unit
+  template:
+    src: gunicorn.service.j2
+    dest: /etc/systemd/system/gunicorn.service
+  notify: restart gunicorn
+  become: yes
+
+- name: Copy nginx site config
+  template:
+    src: nginx_flask.conf.j2
+    dest: /etc/nginx/sites-available/flaskapp
+  notify: reload nginx
+  become: yes
+
+- name: Enable nginx site
+  file:
+    src: /etc/nginx/sites-available/flaskapp
+    dest: /etc/nginx/sites-enabled/flaskapp
+    state: link
+  become: yes
+
+- name: Remove default nginx site if exists
+  file:
+    path: /etc/nginx/sites-enabled/default
+    state: absent
+  become: yes
+
+- name: Ensure gunicorn service running
+  systemd:
+    name: gunicorn
+    state: started
+    enabled: yes
+  become: yes
+
+handlers:
+  - name: reload nginx
+    systemd:
+      name: nginx
+      state: reloaded
+    become: yes
+
+  - name: restart gunicorn
+    systemd:
+      name: gunicorn
+      state: restarted
+    become: yes
+

@@ -1,0 +1,111 @@
+---
+# Install needed system packages
+- name: Install system packages
+  yum:
+    name:
+      - python3
+      - python3-pip
+      - git
+      - nginx
+    state: present
+
+# Deploy Flask code
+- name: Ensure app directory exists
+  file:
+    path: "{{ APP_DIR }}"
+    state: directory
+    owner: ec2-user
+    group: ec2-user
+    mode: "0755"
+
+- name: Clone Flask application
+  git:
+    repo: "{{ GIT_REPO }}"
+    dest: "{{ APP_DIR }}"
+    version: main
+    force: yes
+
+# Python dependencies
+- name: Create virtualenv
+  command: python3 -m venv {{ APP_DIR }}/venv
+  args:
+    creates: "{{ APP_DIR }}/venv"
+
+- name: Install requirements
+  pip:
+    requirements: "{{ APP_DIR }}/requirements.txt"
+    virtualenv: "{{ APP_DIR }}/venv"
+
+- name: Install gunicorn inside venv
+  pip:
+    name: gunicorn
+    virtualenv: "{{ APP_DIR }}/venv"
+
+# Gunicorn wrapper shell script
+- name: Deploy start_gunicorn.sh
+  copy:
+    dest: /usr/local/bin/start_gunicorn.sh
+    content: |
+      #!/usr/bin/env bash
+      cd {{ APP_DIR }}
+      source venv/bin/activate
+      exec gunicorn -w 3 -b 127.0.0.1:8000 app:app
+    mode: "0750"
+    owner: ec2-user
+    group: ec2-user
+
+# Gunicorn systemd unit
+- name: Deploy gunicorn.service
+  copy:
+    dest: /etc/systemd/system/gunicorn.service
+    content: |
+      [Unit]
+      Description=Gunicorn Flask App
+      After=network.target
+
+      [Service]
+      User=ec2-user
+      Group=ec2-user
+      WorkingDirectory={{ APP_DIR }}
+      ExecStart=/usr/local/bin/start_gunicorn.sh
+      Restart=always
+      RestartSec=5
+
+      [Install]
+      WantedBy=multi-user.target
+
+- name: Enable and restart gunicorn
+  systemd:
+    name: gunicorn
+    enabled: yes
+    daemon_reload: yes
+    state: restarted
+
+# NGINX reverse proxy
+- name: Deploy nginx reverse proxy
+  copy:
+    dest: /etc/nginx/conf.d/flaskapp.conf
+    content: |
+      server {
+          listen 80;
+          server_name _;
+          location / {
+              proxy_pass http://127.0.0.1:8000;
+              proxy_set_header Host $host;
+              proxy_set_header X-Real-IP $remote_addr;
+              proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+              proxy_set_header X-Forwarded-Proto $scheme;
+          }
+      }
+
+- name: Remove welcome page config if exists
+  file:
+    path: /etc/nginx/conf.d/welcome.conf
+    state: absent
+
+- name: Restart nginx
+  systemd:
+    name: nginx
+    enabled: yes
+    state: restarted
+

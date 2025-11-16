@@ -1,0 +1,12 @@
+---
+- name: Deploy Flask App
+  hosts: flaskservers
+ # connection: local
+  vars:
+    APP_DIR: /opt/flaskapp
+    GIT_REPO: "https://github.com/krishnamurthypradeep/flask-python-app.git"
+  become: yes
+  vars_files:
+    - ../keys.yml
+  roles:
+    - flaskapp

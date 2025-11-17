@@ -15,7 +15,7 @@ DB_PORT = os.getenv("POSTGRES_PORT", "5432")
 def home():
     return jsonify({
         "status": "success",
-        "message": "Python Flask app v5 running successfully!"
+        "message": "Python Flask app v6 running successfully!"
     }), 200
 
 @app.route("/health", methods=["GET"])
